@@ -1,0 +1,257 @@
+package com.huawei.wallet.pass.passsdk;
+
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.io.IOUtils;
+import sun.security.pkcs.ContentInfo;
+import sun.security.pkcs.PKCS7;
+import sun.security.pkcs.PKCS9Attribute;
+import sun.security.pkcs.PKCS9Attributes;
+import sun.security.pkcs.SignerInfo;
+import sun.security.util.DerOutputStream;
+import sun.security.util.DerValue;
+import sun.security.x509.AlgorithmId;
+import sun.security.x509.X500Name;
+
+import javax.security.auth.x500.X500Principal;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Date;
+
+public class PassSignServiceImpl implements PassSignService
+{
+
+    //华为PassType类型约定前缀
+    public static final String HWPASS_PREFIX = "hwpass.";
+
+    public static final String PEM_BEGIN_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----";
+
+    public static final String PEM_END_PRIVATE_KEY = "-----END PRIVATE KEY-----";
+
+    PassUtilService utilService;
+
+    public void setUtilService(PassUtilService utilService)
+    {
+        this.utilService = utilService;
+    }
+
+    public PassSignServiceImpl()
+    {
+        this.utilService = new PassUtilServiceImpl();
+    }
+
+    @Override
+    public byte[] sign(byte[] dataToSignBytes, byte[] privateKeyBytes, byte[] passTypeCertificateBytes)
+        throws PassException
+    {
+        System.out.println("OLD sign");
+        DerOutputStream bOut = new DerOutputStream();
+        ByteArrayInputStream passTypeCertificateStream = new ByteArrayInputStream(passTypeCertificateBytes);
+        try
+        {
+
+            CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+            X509Certificate passTypeCertificate = (X509Certificate)
+                certificateFactory
+                    .generateCertificate(passTypeCertificateStream);
+
+            String key = new String(privateKeyBytes, StandardCharsets.UTF_8).replaceAll("\\n", "")
+                .replace(PEM_BEGIN_PRIVATE_KEY, "")
+                .replace(PEM_END_PRIVATE_KEY, "");
+            PKCS8EncodedKeySpec keySpec =
+                new PKCS8EncodedKeySpec(Base64.decodeBase64(key));
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+            PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+
+            X500Name xName = X500Name.asX500Name(passTypeCertificate.getIssuerX500Principal());
+            BigInteger serial = passTypeCertificate.getSerialNumber();
+            AlgorithmId digestAlgorithmId = new AlgorithmId(AlgorithmId.SHA256_oid);
+            AlgorithmId signAlgorithmId = new AlgorithmId(AlgorithmId.RSAEncryption_oid);
+
+            PKCS9Attributes authAttibutes = new PKCS9Attributes(new PKCS9Attribute[] {
+                new PKCS9Attribute(PKCS9Attribute.CONTENT_TYPE_OID,
+                    ContentInfo.DATA_OID),
+                new PKCS9Attribute(PKCS9Attribute.MESSAGE_DIGEST_OID, utilService.SHA256Hash(dataToSignBytes)),
+                new PKCS9Attribute(PKCS9Attribute.SIGNING_TIME_OID, new Date())
+            });
+
+            Signature signature = Signature.getInstance("SHA256withRSA");
+            signature.initSign(privateKey);
+            signature.update(authAttibutes.getDerEncoding());
+            byte[] signedData = signature.sign();
+
+            SignerInfo sInfo =
+                new SignerInfo(xName, serial, digestAlgorithmId, authAttibutes, signAlgorithmId, signedData, null);
+            ContentInfo cInfo =
+                new ContentInfo(ContentInfo.DATA_OID, new DerValue(DerValue.tag_OctetString, dataToSignBytes));
+
+            PKCS7 p7 = new PKCS7(new AlgorithmId[] {digestAlgorithmId}, cInfo,
+                new X509Certificate[] {passTypeCertificate},
+                new SignerInfo[] {sInfo});
+            p7.encodeSignedData(bOut);
+            return bOut.toByteArray();
+        }
+        catch (IOException e)
+        {
+            throw new PassException("sign fail", e);
+        }
+        catch (Exception e)
+        {
+            throw new PassException("sign fail", e);
+        }
+        finally
+        {
+            IOUtils.closeQuietly(passTypeCertificateStream);
+            IOUtils.closeQuietly(bOut);
+        }
+    }
+
+    @Override
+    public PKCS7Info verify(String passType, byte[] dataToSignBytes, byte[] signatureBytes,
+        byte[] huaweiCACertificateBytes, Long signValidTime)
+        throws PassException
+    {
+        System.out.println("OLD verify");
+        DerOutputStream bOut = new DerOutputStream();
+        ByteArrayInputStream huaweiCACertificateStream = new ByteArrayInputStream(huaweiCACertificateBytes);
+        PKCS7Info ret = null;
+        try
+        {
+            CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+            X509Certificate huaweiCertificate = (X509Certificate)
+                certificateFactory
+                    .generateCertificate(huaweiCACertificateStream);
+
+            PKCS7 parseSignature = new PKCS7(signatureBytes);
+            SignerInfo[] signerInfos = parseSignature.verify(dataToSignBytes);
+            X509Certificate[] certificates = parseSignature.getCertificates();
+            if (!verifySingerCount(signerInfos, certificates))
+            {
+                return null;
+            }
+
+            //只支持一个证书和一个签名
+            SignerInfo signerInfo = signerInfos[0];
+
+            X509Certificate check_certificate = signerInfo.getCertificate(parseSignature);
+            //检测证书是否已经失效
+            check_certificate.checkValidity();
+            //检测是否是HuaweiCA签发的证书
+            check_certificate.verify(huaweiCertificate.getPublicKey());
+
+            X500Principal subjectX500Principal = check_certificate.getSubjectX500Principal();
+            X500Name x500Name = X500Name.asX500Name(subjectX500Principal);
+            String commonName = x500Name.getCommonName();
+            if (commonName != null)
+            {
+
+                PKCS9Attribute signingTimeAttribute =
+                    signerInfo.getAuthenticatedAttributes().getAttribute(PKCS9Attribute.SIGNING_TIME_OID);
+                Date signingTime = (Date)signingTimeAttribute.getValue();
+
+                if (signValidTime != null)
+                {
+                    //判断签名时间,只有一个签名是有效的
+                    if (Math.abs(System.currentTimeMillis() - signingTime.getTime()) > signValidTime)
+                    {
+                        throw new PassException("check certificate fail, signValidTime past!!!!");
+                    }
+                }
+
+                if (signingTime == null)
+                {
+                    throw new PassException("signingTime is null, error");
+                }
+
+                if (!verifyDigestMethod(signerInfo))
+                {
+                    throw new PassException("signingTime is null, error");
+                } ;
+
+                ret = new PKCS7Info();
+                ret.setSigningTime(signingTime.getTime());
+                // 如果passType不为空,则一定要和commonName匹配
+                if (passType != null)
+                {
+                    if (commonName.equals(passType))
+                    {
+                        ret.setCommonName(commonName);
+                    }
+                    else
+                    {
+                        // all the certificate must same as passType
+                        throw new PassException("check certificate fail, CN and passType not match!!!!");
+                    }
+                }
+                else // 如果passType为空,则跳过commandName的校验并解析出commandName作为结果返回
+                {
+                    ret.setCommonName(commonName);
+                }
+            }
+            else
+            {
+                // all the certificate must same as passType
+                throw new PassException("check certificate fail, commomName is null");
+            }
+
+            //保证只有commonName为hwpass.开头的才通过校验
+            if (ret.getCommonName() != null)
+            {
+                if (!ret.getCommonName().startsWith(HWPASS_PREFIX))
+                {
+                    throw new PassException(
+                        "check certificate fail, commomNama not startWith " + HWPASS_PREFIX);
+                }
+            }
+
+            //全部校验通过,获取content数据
+            byte[] data = parseSignature.getContentInfo().getData();
+            ret.setContentBytes(data);
+            return ret;
+        }
+        catch (Exception e)
+        {
+            throw new PassException("verify fail", e);
+        }
+        finally
+        {
+            IOUtils.closeQuietly(huaweiCACertificateStream);
+            IOUtils.closeQuietly(bOut);
+        }
+    }
+
+    private boolean verifyDigestMethod(SignerInfo signerInfo)
+        throws PassException
+    {
+        if (!signerInfo.getDigestAlgorithmId().equals(AlgorithmId.SHA256_oid))
+        {
+            throw new PassException("digest only support sha256 hash method, error");
+        }
+
+        AlgorithmId digestEncryptionAlgorithmId = signerInfo.getDigestEncryptionAlgorithmId();
+        if (!digestEncryptionAlgorithmId.equals(AlgorithmId.RSAEncryption_oid) && !digestEncryptionAlgorithmId.equals(
+            AlgorithmId.sha256WithRSAEncryption_oid))
+        {
+            throw new PassException("encrypt only support sha256WthRSA or RSA hash method, error");
+        }
+        return true;
+    }
+
+    private boolean verifySingerCount(SignerInfo[] signerInfos, X509Certificate[] certificates)
+        throws PassException
+    {
+        if (signerInfos == null || signerInfos.length != 1 || certificates == null || certificates.length != 1)
+        {
+            throw new PassException("singerInfo==null or singerInfo.length!=1 ");
+        }
+        return true;
+    }
+
+}
