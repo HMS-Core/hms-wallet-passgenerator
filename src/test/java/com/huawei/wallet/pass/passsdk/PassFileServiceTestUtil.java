@@ -42,7 +42,7 @@ public class PassFileServiceTestUtil {
     /**
      * The constant TEST_PASS_TYPE.
      */
-    public static final String TEST_PASS_TYPE = "hwpass.com.huawei.wallet.pass.sdktest";
+    public static final String TEST_PASS_TYPE = "Your service ID";
 
     private Properties properties = new Properties();
 
