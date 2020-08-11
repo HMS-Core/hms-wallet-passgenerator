@@ -35,5 +35,13 @@ Then set the base64 string as the value of this paramter.
     
 2. Run the "testCreateMessage" method in the "src\test\java\PassFileReleaseTest.java" file to create a signature.
 
+## Question or issues
+If you have questions about how to use HMS samples, try the following options:
+- [Stack Overflow](https://stackoverflow.com/questions/tagged/huawei-mobile-services) is the best place for any programming questions. Be sure to tag your question with 
+**huawei-mobile-services**.
+- [Huawei Developer Forum](https://forums.developer.huawei.com/forumPortal/en/home?fid=0101187876626530001) HMS Core Module is great for general questions, or seeking recommendations and opinions.
+
+If you run into a bug in our samples, please submit an [issue](https://github.com/HMS-Core/hms-wallet-passgenerator/issues) to the Repository. Even better you can submit a [Pull Request](https://github.com/HMS-Core/hms-wallet-passgenerator/pulls) with a fix.
+
 ## License
 HMS wallet server sample code is licensed under the [Apache License, version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
