@@ -36,6 +36,9 @@ Then set the base64 string as the value of this paramter.
 2. Run the "testCreateMessage" method in the "src\test\java\PassFileReleaseTest.java" file to create a signature.
 
 ## Question or issues
+If you want to evaluate more about HMS Core,
+[r/HMSCore on Reddit](https://www.reddit.com/r/HMSCore/) is for you to keep up with latest news about HMS Core, and to exchange insights with other developers.
+
 If you have questions about how to use HMS samples, try the following options:
 - [Stack Overflow](https://stackoverflow.com/questions/tagged/huawei-mobile-services) is the best place for any programming questions. Be sure to tag your question with 
 **huawei-mobile-services**.
