@@ -20,11 +20,11 @@ Oracle Java 1.8 is recommended.
 ## Configuration 
 1. Edit the `src\test\resources\release.config.properties` according to your service ID, pem file, and cer file.
 
-1.1  Set the `pass.privatekey.YourServiceID` paramter.
+- Set the `pass.privatekey.YourServiceID` paramter.
 For example, if your service ID is `hwpass.com.huawei.wallet.pass.sdktest`, rename the paramter to `pass.privatekey.hwpass.com.huawei.wallet.pass.sdktest`. Then do base64 encoding to the entire .pem file.
 Then set the base64 string as the value of this paramter.
         
-1.2 Set the `pass.certificate.YourServiceID` paramter.
+-  Set the `pass.certificate.YourServiceID` paramter.
 For example, if your service ID is `hwpass.com.huawei.wallet.pass.sdktest`, rename the paramter to `pass.certificate.hwpass.com.huawei.wallet.pass.sdktest`. Then do base64 encoding to the entire .cer file.
 Then set the base64 string as the value of this paramter.
 
